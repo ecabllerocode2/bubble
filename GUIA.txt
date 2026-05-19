@@ -1,0 +1,373 @@
+## ¿Necesita masa crítica?
+
+**No, y esa es la belleza del approach.** Todo viene de la API de Spotify directamente:
+
+- `popularity` de cada artista es un dato global de Spotify, no tuyo
+- `related_artists` es calculado por Spotify con millones de usuarios
+- Tu "score underground" se calcula con datos que ya existen
+
+El usuario número 1 ya ve algo interesante porque estás usando la inteligencia colectiva de Spotify, no la tuya. Tú solo la presentas de forma más bonita y personal.
+
+Lo único que podría beneficiarse de masa crítica es la comparación entre usuarios, pero eso lo puedes resolver guardando en Firestore los scores de quienes se conectan, de forma anónima. Con 50 usuarios ya tienes algo interesante para mostrar.
+
+---
+
+## Guía de desarrollo completa
+
+---
+
+### Fase 0 — Branding
+
+**Nombre sugerido:** `Burbuja` / `Bubble` / `Orbita` / `Espejo`
+
+Yo iría por **"Espejo"** — porque te muestra quién eres musicalmente, no lo que Spotify quiere que escuches.
+
+**Personalidad de marca:**
+- Oscuro, elegante, un poco provocador
+- No es una app de recomendaciones, es un espejo de identidad
+- Tono: directo, sin condescendencia, con humor seco
+
+**Paleta:**
+```
+Fondo:        #080810  (negro azulado profundo)
+Primario:     #9D5CFF  (violeta eléctrico)
+Secundario:   #FF5CAA  (rosa neón)
+Texto:        #E8E8F0
+Subtle:       #2A2A3E
+```
+
+**Tipografía:**
+- Display: `Syne` — geométrica, moderna, con carácter
+- Body: `Inter` — legible, neutral
+
+---
+
+### Fase 1 — Setup y autenticación
+
+**Estructura del proyecto:**
+```
+espejo/
+├── app/
+│   ├── page.tsx          # Landing
+│   ├── callback/
+│   │   └── page.tsx      # OAuth callback
+│   ├── dashboard/
+│   │   └── page.tsx      # App principal
+│   └── layout.tsx
+├── components/
+│   ├── BubbleViz.tsx     # Visualización principal
+│   ├── ArtistOrb.tsx     # Cada artista como esfera
+│   ├── ScoreCard.tsx     # Tu score underground
+│   ├── ShareCard.tsx     # Imagen compartible
+│   └── Discoveries.tsx   # Artistas recomendados
+├── lib/
+│   ├── spotify.ts        # Wrapper de Spotify API
+│   ├── score.ts          # Lógica del score
+│   └── canvas.ts         # Generación de imagen
+└── hooks/
+    └── useSpotify.ts
+```
+
+**Variables de entorno:**
+```env
+NEXT_PUBLIC_SPOTIFY_CLIENT_ID=
+NEXT_PUBLIC_REDIRECT_URI=https://tuapp.vercel.app/callback
+```
+
+**`lib/spotify.ts`:**
+```typescript
+const SCOPES = [
+  'user-top-read',
+  'user-read-private',
+].join(' ')
+
+export const getAuthUrl = () => {
+  const params = new URLSearchParams({
+    client_id: process.env.NEXT_PUBLIC_SPOTIFY_CLIENT_ID!,
+    response_type: 'token',
+    redirect_uri: process.env.NEXT_PUBLIC_REDIRECT_URI!,
+    scope: SCOPES,
+  })
+  return `https://accounts.spotify.com/authorize?${params}`
+}
+
+export const fetchTopArtists = async (token: string, term: 'short_term' | 'medium_term' | 'long_term') => {
+  const res = await fetch(
+    `https://api.spotify.com/v1/me/top/artists?limit=50&time_range=${term}`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  )
+  return res.json()
+}
+
+export const fetchRelatedArtists = async (token: string, artistId: string) => {
+  const res = await fetch(
+    `https://api.spotify.com/v1/artists/${artistId}/related-artists`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  )
+  return res.json()
+}
+```
+
+**`app/callback/page.tsx`:**
+```typescript
+'use client'
+import { useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+
+export default function Callback() {
+  const router = useRouter()
+
+  useEffect(() => {
+    const hash = window.location.hash.substring(1)
+    const params = new URLSearchParams(hash)
+    const token = params.get('access_token')
+    if (token) {
+      localStorage.setItem('spotify_token', token)
+      router.push('/dashboard')
+    }
+  }, [])
+
+  return <div>Conectando...</div>
+}
+```
+
+---
+
+### Fase 2 — Lógica del score
+
+**`lib/score.ts`:**
+```typescript
+export interface ArtistWithScore {
+  id: string
+  name: string
+  popularity: number
+  undergroundScore: number // 0-100, inverso de popularity
+  images: { url: string }[]
+  listenWeight: number // qué tanto lo escuchas tú, 1-50 por posición
+}
+
+export const calculateUndergroundScore = (artists: any[]): number => {
+  // Promedio ponderado: artistas que más escuchas pesan más
+  const totalWeight = artists.reduce((sum, _, i) => sum + (50 - i), 0)
+  const weightedSum = artists.reduce((sum, artist, i) => {
+    const weight = 50 - i
+    const underground = 100 - artist.popularity
+    return sum + underground * weight
+  }, 0)
+  return Math.round(weightedSum / totalWeight)
+}
+
+export const getUndergroundLabel = (score: number): string => {
+  if (score >= 80) return 'Explorador absoluto'
+  if (score >= 65) return 'Fuera del radar'
+  if (score >= 50) return 'Entre dos mundos'
+  if (score >= 35) return 'Corriente principal'
+  return 'Mainstream puro'
+}
+
+export const processArtists = (artists: any[]): ArtistWithScore[] => {
+  return artists.map((artist, i) => ({
+    id: artist.id,
+    name: artist.name,
+    popularity: artist.popularity,
+    undergroundScore: 100 - artist.popularity,
+    images: artist.images,
+    listenWeight: 50 - i,
+  }))
+}
+```
+
+---
+
+### Fase 3 — Visualización (el corazón)
+
+**`components/BubbleViz.tsx`:**
+```typescript
+'use client'
+import { useEffect, useRef } from 'react'
+import { ArtistWithScore } from '@/lib/score'
+
+// Cada artista es un círculo
+// Eje X: qué tan underground (izquierda = mainstream, derecha = underground)
+// Tamaño: qué tanto lo escuchas
+// Color: género (si está disponible) o por score
+
+interface Props {
+  artists: ArtistWithScore[]
+  onArtistClick: (artist: ArtistWithScore) => void
+}
+
+export default function BubbleViz({ artists, onArtistClick }: Props) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')!
+
+    // Fondo
+    ctx.fillStyle = '#080810'
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+    // Línea central sutil (mainstream / underground)
+    ctx.strokeStyle = '#2A2A3E'
+    ctx.lineWidth = 1
+    ctx.setLineDash([4, 4])
+    ctx.beginPath()
+    ctx.moveTo(canvas.width / 2, 0)
+    ctx.lineTo(canvas.width / 2, canvas.height)
+    ctx.stroke()
+
+    artists.forEach((artist) => {
+      // Posición X según underground score
+      const x = (artist.undergroundScore / 100) * canvas.width * 0.8 + canvas.width * 0.1
+
+      // Posición Y con algo de variación visual
+      const y = canvas.height * 0.2 + Math.random() * canvas.height * 0.6
+
+      // Tamaño según cuánto lo escuchas
+      const radius = 4 + (artist.listenWeight / 50) * 20
+
+      // Color según underground score
+      const hue = 260 + (artist.undergroundScore / 100) * 60
+      ctx.beginPath()
+      ctx.arc(x, y, radius, 0, Math.PI * 2)
+      ctx.fillStyle = `hsla(${hue}, 80%, 65%, 0.8)`
+      ctx.fill()
+
+      // Glow effect
+      ctx.shadowBlur = 15
+      ctx.shadowColor = `hsla(${hue}, 80%, 65%, 0.5)`
+      ctx.fill()
+      ctx.shadowBlur = 0
+    })
+  }, [artists])
+
+  return (
+    <canvas
+      ref={canvasRef}
+      width={800}
+      height={500}
+      className="w-full rounded-2xl cursor-pointer"
+      onClick={(e) => {
+        // Detectar qué artista clickeó el usuario
+        // (implementar hit detection con las coordenadas guardadas)
+      }}
+    />
+  )
+}
+```
+
+---
+
+### Fase 4 — Descubrimientos
+
+```typescript
+// hooks/useDiscoveries.ts
+export const useDiscoveries = (token: string, topArtists: any[]) => {
+  const [discoveries, setDiscoveries] = useState<any[]>([])
+
+  useEffect(() => {
+    if (!topArtists.length) return
+
+    const findDiscoveries = async () => {
+      const topIds = new Set(topArtists.map(a => a.id))
+      const candidates: any[] = []
+
+      // Toma tus top 5 artistas y busca sus relacionados
+      for (const artist of topArtists.slice(0, 5)) {
+        const related = await fetchRelatedArtists(token, artist.id)
+        related.artists
+          .filter((a: any) => !topIds.has(a.id) && a.popularity < 60)
+          .forEach((a: any) => candidates.push(a))
+      }
+
+      // Ordena por más underground y elimina duplicados
+      const unique = Array.from(new Map(candidates.map(a => [a.id, a])).values())
+      const sorted = unique.sort((a, b) => a.popularity - b.popularity)
+      setDiscoveries(sorted.slice(0, 10))
+    }
+
+    findDiscoveries()
+  }, [topArtists])
+
+  return discoveries
+}
+```
+
+---
+
+### Fase 5 — Imagen compartible
+
+**`lib/canvas.ts`:**
+```typescript
+export const generateShareCard = async (
+  score: number,
+  label: string,
+  topArtists: string[],
+  username: string
+): Promise<Blob> => {
+  const canvas = document.createElement('canvas')
+  canvas.width = 1080
+  canvas.height = 1080
+  const ctx = canvas.getContext('2d')!
+
+  // Fondo degradado
+  const gradient = ctx.createLinearGradient(0, 0, 1080, 1080)
+  gradient.addColorStop(0, '#080810')
+  gradient.addColorStop(1, '#1a0a2e')
+  ctx.fillStyle = gradient
+  ctx.fillRect(0, 0, 1080, 1080)
+
+  // Score grande
+  ctx.font = 'bold 180px Syne'
+  ctx.fillStyle = '#9D5CFF'
+  ctx.textAlign = 'center'
+  ctx.fillText(`${score}`, 540, 400)
+
+  // Label
+  ctx.font = '48px Inter'
+  ctx.fillStyle = '#E8E8F0'
+  ctx.fillText(label, 540, 480)
+
+  // Top artistas
+  ctx.font = '32px Inter'
+  ctx.fillStyle = '#9D9DB0'
+  topArtists.slice(0, 3).forEach((name, i) => {
+    ctx.fillText(name, 540, 600 + i * 50)
+  })
+
+  // Branding
+  ctx.font = '28px Inter'
+  ctx.fillStyle = '#4A4A6A'
+  ctx.fillText('espejo.app', 540, 980)
+
+  return new Promise(resolve => canvas.toBlob(resolve as any))
+}
+```
+
+---
+
+### Fase 6 — Landing page
+
+La landing debe responder una sola pregunta en 3 segundos: *¿qué tan rara es tu música?*
+
+```
+Hero: "Descubre qué tan dentro o fuera de la burbuja estás"
+CTA: "Conecta Spotify — es gratis"
+Below fold: ejemplo de visualización con datos ficticios
+Social proof: "X personas ya conocieron su espejo"
+```
+
+---
+
+### Orden de construcción recomendado
+
+1. OAuth + callback funcionando
+2. Fetch de top artists + cálculo de score en consola
+3. Visualización básica con canvas
+4. Página de resultados completa
+5. Descubrimientos
+6. Imagen compartible
+7. Landing page
+8. Firestore para guardar scores anónimos (opcional, para comparativas)
