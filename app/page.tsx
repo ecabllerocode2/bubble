@@ -21,8 +21,9 @@ function LandingContent() {
     if (err) setAuthError('Hubo un problema con Spotify. Intenta de nuevo.')
   }, [router, searchParams])
 
-  const handleLogin = () => {
-    window.location.href = getAuthUrl()
+  const handleLogin = async () => {
+    const url = await getAuthUrl()
+    window.location.href = url
   }
 
   return (

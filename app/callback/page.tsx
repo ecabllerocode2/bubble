@@ -1,14 +1,14 @@
 'use client'
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { exchangeCodeForToken } from '@/lib/spotify'
 
 export default function Callback() {
   const router = useRouter()
 
   useEffect(() => {
-    const hash = window.location.hash.substring(1)
-    const params = new URLSearchParams(hash)
-    const token = params.get('access_token')
+    const params = new URLSearchParams(window.location.search)
+    const code = params.get('code')
     const error = params.get('error')
 
     if (error) {
@@ -16,15 +16,22 @@ export default function Callback() {
       return
     }
 
-    if (token) {
-      // Store token with expiry (Spotify tokens last 1 hour)
-      const expiresAt = Date.now() + 3600 * 1000
-      localStorage.setItem('spotify_token', token)
-      localStorage.setItem('spotify_token_expires', String(expiresAt))
-      router.push('/dashboard')
-    } else {
-      router.push('/?error=no_token')
+    if (!code) {
+      router.push('/?error=no_code')
+      return
     }
+
+    exchangeCodeForToken(code)
+      .then(({ access_token, expires_in }) => {
+        const expiresAt = Date.now() + expires_in * 1000
+        localStorage.setItem('spotify_token', access_token)
+        localStorage.setItem('spotify_token_expires', String(expiresAt))
+        router.push('/dashboard')
+      })
+      .catch((err) => {
+        console.error(err)
+        router.push('/?error=token_exchange_failed')
+      })
   }, [router])
 
   return (
