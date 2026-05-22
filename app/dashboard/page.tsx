@@ -104,7 +104,7 @@ export default function Dashboard() {
     <div className="min-h-screen bg-[#080810] text-[#E8E8F0]">
       {/* Header */}
       <header className="flex items-center justify-between px-6 py-4 border-b border-[#2A2A3E]">
-        <span className="font-display text-xl font-bold text-[#9D5CFF]">espejo</span>
+        <span className="font-display text-xl font-bold text-[#9D5CFF]">bubble</span>
         {user && (
           <div className="flex items-center gap-3">
             {user.images?.[0] && (

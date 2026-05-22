@@ -30,7 +30,7 @@ function LandingContent() {
     <div className="min-h-screen bg-[#080810] text-[#E8E8F0] flex flex-col">
       {/* Header */}
       <header className="flex items-center justify-between px-6 py-4">
-        <span className="font-display text-xl font-bold text-[#9D5CFF]">espejo</span>
+        <span className="font-display text-xl font-bold text-[#9D5CFF]">bubble</span>
       </header>
 
       {/* Hero */}
@@ -92,7 +92,7 @@ function LandingContent() {
 
       {/* Footer */}
       <footer className="text-center py-6 text-[#4A4A6A] text-xs">
-        espejo — tu identidad musical
+        bubble — tu identidad musical
       </footer>
     </div>
   )

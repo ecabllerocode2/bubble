@@ -41,9 +41,9 @@ export function useDiscoveries(token: string | null, topArtists: SpotifyArtist[]
         for (const genre of topGenres) {
           const data = await searchArtistsByGenre(token, genre, 25)
           if (cancelled) return
-          data.artists.items
-            .filter((a) => !topIds.has(a.id) && a.popularity < 65 && a.popularity > 5)
-            .forEach((a) => candidates.push(a))
+          ;(data.artists?.items ?? []).filter(
+            (a) => !topIds.has(a.id) && a.popularity < 65 && a.popularity > 5
+          ).forEach((a) => candidates.push(a))
         }
 
         // Deduplicate, sort by most underground first

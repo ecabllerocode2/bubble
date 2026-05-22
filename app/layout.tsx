@@ -14,13 +14,13 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Espejo — ¿Qué tan rara es tu música?",
+  title: "Bubble — ¿Qué tan rara es tu música?",
   description: "Descubre qué tan dentro o fuera de la burbuja estás. Tu score underground basado en tu historial real de Spotify.",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Espejo",
+    title: "Bubble",
   },
 };
 
