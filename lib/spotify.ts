@@ -94,6 +94,24 @@ export const fetchRelatedArtists = async (
   return res.json()
 }
 
+export const searchArtistsByGenre = async (
+  token: string,
+  genre: string,
+  limit = 20
+): Promise<{ artists: { items: SpotifyArtist[] } }> => {
+  const params = new URLSearchParams({
+    q: `genre:"${genre}"`,
+    type: 'artist',
+    limit: String(limit),
+  })
+  const res = await fetch(
+    `https://api.spotify.com/v1/search?${params}`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  )
+  if (!res.ok) throw new Error(`Spotify API error: ${res.status}`)
+  return res.json()
+}
+
 export const fetchCurrentUser = async (
   token: string
 ): Promise<SpotifyUser> => {

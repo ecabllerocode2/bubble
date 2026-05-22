@@ -139,40 +139,35 @@ export default function BubbleViz({ artists, onArtistClick, selectedId }: Props)
     }
   }, [hovered, selectedId])
 
-  // Build bubble positions whenever artists change
-  useEffect(() => {
+  // Single source of truth: size canvas → build bubbles → draw
+  const initAndDraw = useCallback(() => {
     const canvas = canvasRef.current
     if (!canvas || !artists.length) return
-    bubblesRef.current = buildBubbles(canvas.width, canvas.height)
-    draw()
-  }, [artists, buildBubbles, draw])
-
-  // Redraw when hover/selection changes
-  useEffect(() => {
-    draw()
-  }, [draw])
-
-  // Handle resize
-  useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const observer = new ResizeObserver(() => {
-      const parent = canvas.parentElement
-      if (!parent) return
-      canvas.width = parent.clientWidth
-      canvas.height = Math.min(480, Math.max(320, parent.clientWidth * 0.55))
-      bubblesRef.current = buildBubbles(canvas.width, canvas.height)
-      draw()
-    })
-    observer.observe(canvas.parentElement!)
-    // Initial sizing
     const parent = canvas.parentElement
     if (parent) {
       canvas.width = parent.clientWidth
       canvas.height = Math.min(480, Math.max(320, parent.clientWidth * 0.55))
+    } else if (!canvas.width) {
+      canvas.width = 800
+      canvas.height = 440
     }
+    bubblesRef.current = buildBubbles(canvas.width, canvas.height)
+    draw()
+  }, [artists, buildBubbles, draw])
+
+  // Re-init when artists change (term switch)
+  useEffect(() => {
+    initAndDraw()
+  }, [initAndDraw])
+
+  // Handle window resize
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas?.parentElement) return
+    const observer = new ResizeObserver(initAndDraw)
+    observer.observe(canvas.parentElement)
     return () => observer.disconnect()
-  }, [buildBubbles, draw])
+  }, [initAndDraw])
 
   const getBubbleAt = (clientX: number, clientY: number): BubbleData | null => {
     const canvas = canvasRef.current
